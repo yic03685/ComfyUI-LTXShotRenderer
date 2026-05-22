@@ -143,38 +143,50 @@ class LTXShotRenderer:
         return neg
 
     def _apply_guide(self, positive, negative, vae, video_latent, guide_data, strength):
-        """Apply LTXDirectorGuide: encode guide images into latent at their frame positions."""
-        from comfy_extras.nodes_lt import LTXVAddGuide, get_keyframe_idxs
+        """Apply LTXDirectorGuide: encode guide images into latent at their frame positions.
+
+        guide_data is a dict with keys: "images" (list of tensors), "insert_frames" (list of ints),
+        "strengths" (list of floats).
+        """
+        from comfy_extras.nodes_lt import LTXVAddGuide
 
         latent_image = video_latent["samples"].clone()
         noise_mask = get_noise_mask(video_latent).clone()
         _, _, latent_length, latent_height, latent_width = latent_image.shape
 
-        if not guide_data or len(guide_data) == 0 or strength <= 0:
+        if not guide_data:
+            return positive, negative, {"samples": latent_image, "noise_mask": noise_mask}
+
+        images = guide_data.get("images", [])
+        insert_frames = guide_data.get("insert_frames", [])
+        strengths = guide_data.get("strengths", [])
+
+        if not images or strength <= 0:
             return positive, negative, {"samples": latent_image, "noise_mask": noise_mask}
 
         scale_factors = vae.downscale_index_formula
 
-        for guide in guide_data:
-            image = guide["image"]
-            frame_idx = guide.get("frame_idx", 0)
-            guide_str = guide.get("strength", strength)
+        for idx, img_tensor in enumerate(images):
+            frame_idx = insert_frames[idx] if idx < len(insert_frames) else 0
+            guide_str = strengths[idx] if idx < len(strengths) else strength
 
-            if guide_str <= 0:
+            # Use the overall strength as a multiplier
+            effective_strength = guide_str if guide_str > 0 else strength
+            if effective_strength <= 0:
                 continue
 
-            # Encode image through VAE (same as LTXVAddGuide.encode)
-            _, encoded = LTXVAddGuide.encode(vae, latent_width, latent_height, image, scale_factors)
+            # Encode image through VAE
+            _, encoded = LTXVAddGuide.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
 
             # Calculate latent frame index
             frame_idx_resolved, latent_idx = LTXVAddGuide.get_latent_index(
-                positive, latent_length, image.shape[0], frame_idx, scale_factors
+                positive, latent_length, img_tensor.shape[0], frame_idx, scale_factors
             )
 
             # Append keyframe to latent and conditioning
             positive, negative, latent_image, noise_mask = LTXVAddGuide.append_keyframe(
                 positive, negative, frame_idx_resolved, latent_image, noise_mask,
-                encoded, guide_str, scale_factors
+                encoded, effective_strength, scale_factors
             )
 
             latent_length = latent_image.shape[2]
