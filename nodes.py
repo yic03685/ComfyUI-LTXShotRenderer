@@ -63,8 +63,6 @@ class LTXShotRenderer:
                 "frame_rate": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 0.1}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 14, "min": 1, "max": 100}),
-                "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "cfg": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "sampler_name": (comfy.samplers.KSampler.SAMPLERS,),
                 "scheduler": (comfy.samplers.KSampler.SCHEDULERS,),
                 "guide_strength": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 2.0, "step": 0.05,
@@ -86,7 +84,7 @@ class LTXShotRenderer:
 
     def execute(
         self, model, positive, video_latent, audio_latent, guide_data, vae,
-        frame_rate, seed, steps, denoise, cfg, sampler_name, scheduler, guide_strength,
+        frame_rate, seed, steps, sampler_name, scheduler, guide_strength,
         upscale_model=None, upscale_steps=4, upscale_denoise=0.42, upscale_guide_strength=1.0,
     ):
         # === Step 1: Build positive/negative conditioning with frame_rate ===
@@ -99,10 +97,10 @@ class LTXShotRenderer:
             pos_cond, neg_cond, vae, video_latent, guide_data, guide_strength
         )
 
-        # === Step 3: First pass sampling ===
+        # === Step 3: First pass sampling (cfg=1, denoise=1.0 — full generation) ===
         video_out, audio_out = self._sample_pass(
             model, pos_g, neg_g, guided_latent, audio_latent,
-            seed, steps, denoise, cfg, sampler_name, scheduler
+            seed, steps, 1.0, 1.0, sampler_name, scheduler
         )
 
         # === Step 4: Crop guides from first pass result ===
@@ -118,10 +116,10 @@ class LTXShotRenderer:
                 pos_cropped, neg_cropped, vae, video_upscaled, guide_data, upscale_guide_strength
             )
 
-            # Second pass sampling (reuse first-pass audio_latent)
+            # Second pass sampling (cfg=1, partial denoise for refinement)
             video_final, audio_final = self._sample_pass(
                 model, pos_up, neg_up, guided_up, audio_out,
-                seed, upscale_steps, upscale_denoise, cfg, sampler_name, scheduler
+                seed, upscale_steps, upscale_denoise, 1.0, sampler_name, scheduler
             )
 
             # Crop guides from final output
