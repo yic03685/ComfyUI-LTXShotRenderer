@@ -18,6 +18,7 @@ import torch
 import comfy.samplers
 import comfy.sample
 import comfy.utils
+import comfy.model_management
 import comfy.model_patcher
 import node_helpers
 
@@ -306,29 +307,31 @@ class LTXShotRenderer:
     def _latent_upscale(self, video_latent, upscale_model, vae):
         """Upscale video latent using latent upscale model (LTXVLatentUpsampler).
 
-        Uses VAE per-channel statistics to un-normalize before upscaling,
-        then re-normalizes after. This matches ComfyUI's LTXVLatentUpsampler exactly.
+        Matches ComfyUI's LTXVLatentUpsampler: handles dtype conversion,
+        device management, and VAE per-channel statistics normalization.
         """
         latents = video_latent["samples"]
+        original_dtype = latents.dtype
 
-        # Un-normalize using VAE statistics, upscale, re-normalize
-        latents = vae.first_stage_model.per_channel_statistics.un_normalize(latents)
-        upscaled = upscale_model(latents)
-        upscaled = vae.first_stage_model.per_channel_statistics.normalize(upscaled)
+        # Determine model dtype and device
+        model_dtype = next(upscale_model.parameters()).dtype
+        device = comfy.model_management.get_torch_device()
+
+        try:
+            upscale_model.to(device)
+
+            # Convert to model dtype, un-normalize, upscale, re-normalize
+            latents = latents.to(device=device, dtype=model_dtype)
+            latents = vae.first_stage_model.per_channel_statistics.un_normalize(latents)
+            upscaled = upscale_model(latents)
+            upscaled = vae.first_stage_model.per_channel_statistics.normalize(upscaled)
+            upscaled = upscaled.to(dtype=original_dtype)
+        finally:
+            upscale_model.to("cpu")
 
         result = video_latent.copy()
         result["samples"] = upscaled
-
-        # Upscale noise mask to match new spatial dimensions
-        if "noise_mask" in video_latent:
-            mask = video_latent["noise_mask"]
-            b, mc, t, h, w = mask.shape
-            new_h, new_w = upscaled.shape[-2], upscaled.shape[-1]
-            reshaped_mask = mask.permute(0, 2, 1, 3, 4).reshape(b * t, mc, h, w)
-            upscaled_mask = comfy.utils.common_upscale(
-                reshaped_mask, new_w, new_h, "nearest", "center"
-            )
-            result["noise_mask"] = upscaled_mask.reshape(b, t, mc, new_h, new_w).permute(0, 2, 1, 3, 4)
+        result.pop("noise_mask", None)
 
         return result
 
