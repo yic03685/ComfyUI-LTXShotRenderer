@@ -101,7 +101,7 @@ class LTXShotRenderer:
         # === Step 3: First pass sampling (cfg=1, denoise=1.0 — full generation) ===
         video_out, audio_out = self._sample_pass(
             model, pos_g, neg_g, guided_latent, audio_latent,
-            seed, steps, 1.0, 1.0, sampler_name, scheduler
+            seed, steps, 1.0, sampler_name, scheduler
         )
 
         # === Step 4: Crop guides from first pass result ===
@@ -120,7 +120,7 @@ class LTXShotRenderer:
             # Second pass sampling (cfg=1, partial denoise for refinement)
             video_final, audio_final = self._sample_pass(
                 model, pos_up, neg_up, guided_up, audio_out,
-                seed, upscale_steps, upscale_denoise, 1.0, sampler_name, scheduler
+                seed, upscale_steps, upscale_denoise, sampler_name, scheduler
             )
 
             # Crop guides from final output
@@ -195,43 +195,29 @@ class LTXShotRenderer:
         return positive, negative, {"samples": latent_image, "noise_mask": noise_mask}
 
     def _sample_pass(self, model, positive, negative, video_latent, audio_latent,
-                     seed, steps, denoise, cfg, sampler_name, scheduler_name):
-        """Run one sampling pass: concat AV → sample → separate AV."""
+                     seed, steps, denoise, sampler_name, scheduler_name):
+        """Run one sampling pass: concat AV → sample → separate AV.
+
+        Uses comfy.sample.sample which is the same path as the built-in KSampler node.
+        """
         # Concat video + audio
         av_latent = self._concat_av(video_latent, audio_latent)
 
-        # Create noise
-        noise = comfy.sample.prepare_noise(av_latent["samples"], seed)
-
-        # Create sampler and sigmas
-        real_model = model.model if hasattr(model, 'model') else model
-        sampler = comfy.samplers.sampler_object(sampler_name)
-
-        sigmas = comfy.samplers.calculate_sigmas(
-            real_model.model_sampling, scheduler_name, steps
-        ).cpu()
-
-        # Apply denoise (trim sigmas)
-        if denoise < 1.0:
-            total = len(sigmas) - 1
-            start_step = max(0, int(total * (1.0 - denoise)))
-            sigmas = sigmas[start_step:]
-
-        # Build guider (CFGGuider equivalent)
+        latent_image = av_latent["samples"]
         noise_mask = av_latent.get("noise_mask", None)
 
-        # Use ComfyUI's sample_custom for maximum compatibility
-        latent_image = av_latent["samples"]
+        # Generate noise matching the latent structure
+        noise = comfy.sample.prepare_noise(latent_image, seed)
 
-        disable_pbar = False
-        callback = None
-
-        samples = comfy.sample.sample_custom(
-            model, noise, cfg, sampler, sigmas,
-            positive, negative, latent_image,
+        # Use the high-level sample() which handles KSampler creation,
+        # sigmas, device management, and model patching internally
+        samples = comfy.sample.sample(
+            model, noise, steps, 1.0,  # cfg=1.0 always for LTX Director
+            sampler_name, scheduler_name,
+            positive, negative,
+            latent_image,
+            denoise=denoise,
             noise_mask=noise_mask,
-            callback=callback,
-            disable_pbar=disable_pbar,
             seed=seed,
         )
 
@@ -270,12 +256,9 @@ class LTXShotRenderer:
         audio["samples"] = latents[1]
 
         if "noise_mask" in av_latent and av_latent["noise_mask"] is not None:
-            try:
-                masks = av_latent["noise_mask"].unbind()
-                video["noise_mask"] = masks[0]
-                audio["noise_mask"] = masks[1]
-            except:
-                pass
+            masks = av_latent["noise_mask"].unbind()
+            video["noise_mask"] = masks[0]
+            audio["noise_mask"] = masks[1]
 
         return video, audio
 
@@ -316,6 +299,9 @@ class LTXShotRenderer:
         # Determine model dtype and device
         model_dtype = next(upscale_model.parameters()).dtype
         device = comfy.model_management.get_torch_device()
+
+        # Free memory before upscale
+        comfy.model_management.free_memory(latents.nelement() * 8, device)
 
         try:
             upscale_model.to(device)
