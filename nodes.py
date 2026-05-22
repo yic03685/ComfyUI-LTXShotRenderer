@@ -1,10 +1,10 @@
 """
-LTXDirectorSimple - Simplified nodes for LTX Video Director workflow.
+ComfyUI-LTXShotRenderer - Simplified nodes for LTX Video Director workflow.
 
 Reduces the 15+ node chain down to 2 nodes:
-  LTXDirector → LTXDirectorSampler
+  LTXDirector → LTXShotRenderer
 
-LTXDirectorSampler internally handles:
+LTXShotRenderer internally handles:
   - ConditioningZeroOut + LTXVConditioning (frame rate)
   - LTXDirectorGuide (apply guide images to conditioning/latent)
   - LTXVConcatAVLatent (merge video + audio)
@@ -38,7 +38,7 @@ def get_noise_mask(latent):
     return noise_mask
 
 
-class LTXDirectorSampler:
+class LTXShotRenderer:
     """
     All-in-one sampler for LTX Director workflow.
 
@@ -324,9 +324,9 @@ class LTXDirectorSampler:
 
 
 NODE_CLASS_MAPPINGS = {
-    "LTXDirectorSampler": LTXDirectorSampler,
+    "LTXShotRenderer": LTXShotRenderer,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "LTXDirectorSampler": "LTX Director Sampler (All-in-One)",
+    "LTXShotRenderer": "LTX Shot Renderer",
 }

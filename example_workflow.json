@@ -1,0 +1,240 @@
+{
+  "id": "ltx-shot-renderer-example",
+  "revision": 0,
+  "last_node_id": 10,
+  "last_link_id": 16,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [100, 200],
+      "size": [300, 100],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [1]},
+        {"name": "CLIP", "type": "CLIP", "links": []},
+        {"name": "VAE", "type": "VAE", "links": []}
+      ],
+      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
+      "widgets_values": ["ltx-2.3-22b-dev-fp8.safetensors"]
+    },
+    {
+      "id": 2,
+      "type": "DualCLIPLoader",
+      "pos": [100, 400],
+      "size": [300, 120],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "CLIP", "type": "CLIP", "links": [2]}
+      ],
+      "properties": {"Node name for S&R": "DualCLIPLoader"},
+      "widgets_values": ["gemma_3_12B_it_fp8_e4m3fn.safetensors", "ltx-2.3_text_projection_bf16.safetensors", "ltxv", "default"]
+    },
+    {
+      "id": 3,
+      "type": "VAELoaderKJ",
+      "pos": [100, 600],
+      "size": [300, 110],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "VAE", "type": "VAE", "links": [3]}
+      ],
+      "title": "Audio VAE",
+      "properties": {"Node name for S&R": "VAELoaderKJ"},
+      "widgets_values": ["LTX23_audio_vae_bf16.safetensors", "main_device", "bf16"]
+    },
+    {
+      "id": 4,
+      "type": "VAELoaderKJ",
+      "pos": [100, 770],
+      "size": [300, 110],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "VAE", "type": "VAE", "links": [4, 11, 14]}
+      ],
+      "title": "Video VAE",
+      "properties": {"Node name for S&R": "VAELoaderKJ"},
+      "widgets_values": ["LTX23_video_vae_bf16.safetensors", "main_device", "bf16"]
+    },
+    {
+      "id": 5,
+      "type": "LoraLoaderModelOnly",
+      "pos": [470, 200],
+      "size": [300, 90],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 1}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [5]}
+      ],
+      "title": "Distilled LoRA",
+      "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
+      "widgets_values": ["ltx-2.3-22b-distilled-lora-384.safetensors", 0.5]
+    },
+    {
+      "id": 6,
+      "type": "LTXDirector",
+      "pos": [830, 150],
+      "size": [1120, 777],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 5},
+        {"name": "clip", "type": "CLIP", "link": 2},
+        {"name": "audio_vae", "shape": 7, "type": "VAE", "link": 3},
+        {"name": "optional_latent", "shape": 7, "type": "LATENT", "link": null}
+      ],
+      "outputs": [
+        {"name": "model", "type": "MODEL", "links": [6]},
+        {"name": "positive", "type": "CONDITIONING", "links": [7]},
+        {"name": "video_latent", "type": "LATENT", "links": [8]},
+        {"name": "audio_latent", "type": "LATENT", "links": [9]},
+        {"name": "guide_data", "type": "GUIDE_DATA", "links": [10]},
+        {"name": "frame_rate", "type": "FLOAT", "links": [12]},
+        {"name": "combined_audio", "type": "AUDIO", "links": []}
+      ],
+      "properties": {
+        "cnr_id": "whatdreamscost-comfyui",
+        "Node name for S&R": "LTXDirector",
+        "aux_id": "kijai/ComfyUI-PromptRelay"
+      },
+      "widgets_values": [
+        "A woman with long dark hair walks through a sunlit garden, gentle breeze moving her white dress. She looks directly at the camera with a warm smile. Soft ambient sounds of birds and rustling leaves.",
+        120, 5,
+        "{\"segments\":[],\"audioSegments\":[]}",
+        "", "", 0.001, "", false, 24, "seconds",
+        0, 0, "maintain aspect ratio", 32, 18, ""
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 7,
+      "type": "LTXShotRenderer",
+      "pos": [2050, 200],
+      "size": [350, 520],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 6},
+        {"name": "positive", "type": "CONDITIONING", "link": 7},
+        {"name": "video_latent", "type": "LATENT", "link": 8},
+        {"name": "audio_latent", "type": "LATENT", "link": 9},
+        {"name": "guide_data", "type": "GUIDE_DATA", "link": 10},
+        {"name": "vae", "type": "VAE", "link": 11},
+        {"name": "frame_rate", "type": "FLOAT", "link": 12},
+        {"name": "upscale_model", "shape": 7, "type": "LATENT_UPSCALE_MODEL", "link": 16}
+      ],
+      "outputs": [
+        {"name": "video_latent", "type": "LATENT", "links": [13]},
+        {"name": "audio_latent", "type": "LATENT", "links": [15]},
+        {"name": "first_pass_video", "type": "LATENT", "links": []}
+      ],
+      "properties": {"Node name for S&R": "LTXShotRenderer"},
+      "widgets_values": [
+        42,
+        14,
+        1.0,
+        1.0,
+        "euler",
+        "linear_quadratic",
+        0.5,
+        4,
+        0.42,
+        1.0
+      ],
+      "color": "#234",
+      "bgcolor": "#456"
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [2480, 200],
+      "size": [200, 50],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 13},
+        {"name": "vae", "type": "VAE", "link": 14}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": []}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"},
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "LTXVAudioVAEDecode",
+      "pos": [2480, 350],
+      "size": [200, 50],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 15},
+        {"name": "audio_vae", "type": "VAE", "link": 3}
+      ],
+      "outputs": [
+        {"name": "AUDIO", "type": "AUDIO", "links": []}
+      ],
+      "properties": {"Node name for S&R": "LTXVAudioVAEDecode"},
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "LatentUpscaleModelLoader",
+      "pos": [2050, 780],
+      "size": [300, 60],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "LATENT_UPSCALE_MODEL", "type": "LATENT_UPSCALE_MODEL", "links": [16]}
+      ],
+      "properties": {"Node name for S&R": "LatentUpscaleModelLoader"},
+      "widgets_values": ["ltx-2.3-spatial-upscaler-x2-1.0.safetensors"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 5, 0, "MODEL"],
+    [2, 2, 0, 6, 1, "CLIP"],
+    [3, 3, 0, 6, 2, "VAE"],
+    [4, 4, 0, 8, 1, "VAE"],
+    [5, 5, 0, 6, 0, "MODEL"],
+    [6, 6, 0, 7, 0, "MODEL"],
+    [7, 6, 1, 7, 1, "CONDITIONING"],
+    [8, 6, 2, 7, 2, "LATENT"],
+    [9, 6, 3, 7, 3, "LATENT"],
+    [10, 6, 4, 7, 4, "GUIDE_DATA"],
+    [11, 4, 0, 7, 5, "VAE"],
+    [12, 6, 5, 7, 6, "FLOAT"],
+    [13, 7, 0, 8, 0, "LATENT"],
+    [14, 4, 0, 8, 1, "VAE"],
+    [15, 7, 1, 9, 0, "LATENT"],
+    [16, 10, 0, 7, 7, "LATENT_UPSCALE_MODEL"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
