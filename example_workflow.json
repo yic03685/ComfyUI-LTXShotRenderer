@@ -148,7 +148,6 @@
         {"name": "negative", "type": "CONDITIONING", "links": [24]}
       ],
       "properties": {"Node name for S&R": "LTXShotRenderer"},
-      "widgets_values": [42, "randomize", 14, "euler", "linear_quadratic", 0.5],
       "color": "#234",
       "bgcolor": "#456"
     },
@@ -190,7 +189,6 @@
         {"name": "audio_latent", "type": "LATENT", "links": [23]}
       ],
       "properties": {"Node name for S&R": "LTXShotUpscaler"},
-      "widgets_values": [42, "randomize", 4, 0.42, "euler", "linear_quadratic", 1.0],
       "color": "#243",
       "bgcolor": "#465"
     },
