@@ -179,6 +179,9 @@ class LTXShotRenderer:
             # Encode image through VAE
             _, encoded = LTXVAddGuide.encode(vae, latent_width, latent_height, img_tensor, scale_factors)
 
+            # Ensure encoded is on the same device as latent_image
+            encoded = encoded.to(device=latent_image.device, dtype=latent_image.dtype)
+
             # Calculate latent frame index
             frame_idx_resolved, latent_idx = LTXVAddGuide.get_latent_index(
                 positive, latent_length, img_tensor.shape[0], frame_idx, scale_factors
@@ -311,7 +314,7 @@ class LTXShotRenderer:
             latents = vae.first_stage_model.per_channel_statistics.un_normalize(latents)
             upscaled = upscale_model(latents)
             upscaled = vae.first_stage_model.per_channel_statistics.normalize(upscaled)
-            upscaled = upscaled.to(dtype=original_dtype)
+            upscaled = upscaled.to(device="cpu", dtype=original_dtype)
         finally:
             upscale_model.to("cpu")
 
