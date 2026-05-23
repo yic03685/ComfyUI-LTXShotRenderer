@@ -1,16 +1,13 @@
 """
 ComfyUI-LTXShotRenderer - Simplified nodes for LTX Video Director workflow.
 
-Two nodes replace the 15+ node chain:
-  LTXDirector → LTXShotRenderer → (optional) LTXShotUpscaler
+Three nodes replace the 15+ node chain:
+  LTXDirector → LTXShotRenderer → LTXShotUpscaler → LTXShotRefiner
 
-LTXShotRenderer handles first pass:
-  ConditioningZeroOut + LTXVConditioning + LTXDirectorGuide
-  + ConcatAV + Sampling + SeparateAV + CropGuides
-
-LTXShotUpscaler handles second pass:
-  LatentUpscale + LTXDirectorGuide + ConcatAV + Sampling
-  + SeparateAV + CropGuides
+Each node is a separate execution step so ComfyUI can manage VRAM:
+  - LTXShotRenderer: conditioning + guide + first pass sampling (main model)
+  - LTXShotUpscaler: latent upscale only (upscale model, tiny)
+  - LTXShotRefiner: re-apply guide + second pass sampling (main model)
 """
 
 import torch
@@ -178,9 +175,7 @@ def _crop_guides(positive, negative, latent):
 class LTXShotRenderer:
     """
     First pass: conditioning setup + guide application + sampling + crop.
-
-    Takes all outputs from LTXDirector and produces video/audio latents
-    plus conditioning state for optional upscale pass.
+    Uses main model (~24GB). ComfyUI offloads it after this node completes.
     """
 
     @classmethod
@@ -209,91 +204,49 @@ class LTXShotRenderer:
 
     def execute(self, model, positive, video_latent, audio_latent, guide_data, vae,
                 frame_rate, seed, steps, sampler_name, scheduler, guide_strength):
-        # Conditioning: zero-out negative + apply frame_rate
         neg_cond = _make_negative(positive)
         pos_cond = node_helpers.conditioning_set_values(positive, {"frame_rate": frame_rate})
         neg_cond = node_helpers.conditioning_set_values(neg_cond, {"frame_rate": frame_rate})
 
-        # Apply guide images
         pos_g, neg_g, guided_latent = _apply_guide(
             pos_cond, neg_cond, vae, video_latent, guide_data, guide_strength
         )
 
-        # Sample
         video_out, audio_out = _sample_pass(
             model, pos_g, neg_g, guided_latent, audio_latent,
             seed, steps, 1.0, sampler_name, scheduler
         )
 
-        # Crop guides
         pos_out, neg_out, video_cropped = _crop_guides(pos_g, neg_g, video_out)
-
         return (video_cropped, audio_out, pos_out, neg_out)
 
 
 # =============================================================================
-# Node 2: LTXShotUpscaler — optional second pass
+# Node 2: LTXShotUpscaler — latent upscale ONLY
 # =============================================================================
 
 class LTXShotUpscaler:
     """
-    Second pass: upscale latent + re-apply guides + sample + crop.
-
-    Takes video/audio/conditioning from LTXShotRenderer, upscales the
-    video latent, re-applies Director guides, and refines with sampling.
-    Runs as a separate node so ComfyUI can manage VRAM between passes.
+    Latent 2x spatial upscale only. Uses the small upscale model (~200MB).
+    Separate node so ComfyUI can offload the main model first.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": ("MODEL",),
-                "positive": ("CONDITIONING",),
-                "negative": ("CONDITIONING",),
                 "video_latent": ("LATENT",),
-                "audio_latent": ("LATENT",),
-                "guide_data": ("GUIDE_DATA",),
                 "upscale_model": ("LATENT_UPSCALE_MODEL",),
                 "vae": ("VAE",),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "steps": ("INT", {"default": 4, "min": 1, "max": 50}),
-                "denoise": ("FLOAT", {"default": 0.42, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "sampler_name": (comfy.samplers.KSampler.SAMPLERS,),
-                "scheduler": (comfy.samplers.KSampler.SCHEDULERS,),
-                "guide_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05}),
             },
         }
 
-    RETURN_TYPES = ("LATENT", "LATENT")
-    RETURN_NAMES = ("video_latent", "audio_latent")
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("video_latent",)
     FUNCTION = "execute"
     CATEGORY = "sampling/ltxv"
 
-    def execute(self, model, positive, negative, video_latent, audio_latent,
-                guide_data, upscale_model, vae, seed, steps, denoise,
-                sampler_name, scheduler, guide_strength):
-        # Upscale video latent
-        video_upscaled = self._latent_upscale(video_latent, upscale_model, vae)
-
-        # Re-apply guide at upscaled resolution
-        pos_up, neg_up, guided_up = _apply_guide(
-            positive, negative, vae, video_upscaled, guide_data, guide_strength
-        )
-
-        # Sample (partial denoise for refinement)
-        video_out, audio_out = _sample_pass(
-            model, pos_up, neg_up, guided_up, audio_latent,
-            seed, steps, denoise, sampler_name, scheduler
-        )
-
-        # Crop guides
-        _, _, video_final = _crop_guides(pos_up, neg_up, video_out)
-
-        return (video_final, audio_out)
-
-    def _latent_upscale(self, video_latent, upscale_model, vae):
-        """LTXVLatentUpsampler: un-normalize → upscale → re-normalize."""
+    def execute(self, video_latent, upscale_model, vae):
         latents = video_latent["samples"]
         original_dtype = latents.dtype
         model_dtype = next(upscale_model.parameters()).dtype
@@ -314,15 +267,68 @@ class LTXShotUpscaler:
         result = video_latent.copy()
         result["samples"] = upscaled
         result.pop("noise_mask", None)
-        return result
+        return (result,)
+
+
+# =============================================================================
+# Node 3: LTXShotRefiner — second pass sampling
+# =============================================================================
+
+class LTXShotRefiner:
+    """
+    Second pass: re-apply guides + partial denoise sampling + crop.
+    Uses main model again. ComfyUI reloads it after upscaler is offloaded.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "video_latent": ("LATENT",),
+                "audio_latent": ("LATENT",),
+                "guide_data": ("GUIDE_DATA",),
+                "vae": ("VAE",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "steps": ("INT", {"default": 4, "min": 1, "max": 50}),
+                "denoise": ("FLOAT", {"default": 0.42, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "sampler_name": (comfy.samplers.KSampler.SAMPLERS,),
+                "scheduler": (comfy.samplers.KSampler.SCHEDULERS,),
+                "guide_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT", "LATENT")
+    RETURN_NAMES = ("video_latent", "audio_latent")
+    FUNCTION = "execute"
+    CATEGORY = "sampling/ltxv"
+
+    def execute(self, model, positive, negative, video_latent, audio_latent,
+                guide_data, vae, seed, steps, denoise, sampler_name, scheduler,
+                guide_strength):
+        pos_up, neg_up, guided_up = _apply_guide(
+            positive, negative, vae, video_latent, guide_data, guide_strength
+        )
+
+        video_out, audio_out = _sample_pass(
+            model, pos_up, neg_up, guided_up, audio_latent,
+            seed, steps, denoise, sampler_name, scheduler
+        )
+
+        _, _, video_final = _crop_guides(pos_up, neg_up, video_out)
+        return (video_final, audio_out)
 
 
 NODE_CLASS_MAPPINGS = {
     "LTXShotRenderer": LTXShotRenderer,
     "LTXShotUpscaler": LTXShotUpscaler,
+    "LTXShotRefiner": LTXShotRefiner,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXShotRenderer": "LTX Shot Renderer",
     "LTXShotUpscaler": "LTX Shot Upscaler",
+    "LTXShotRefiner": "LTX Shot Refiner",
 }
