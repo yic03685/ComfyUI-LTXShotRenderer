@@ -1,8 +1,8 @@
 {
   "id": "ltx-shot-renderer-example",
   "revision": 0,
-  "last_node_id": 12,
-  "last_link_id": 24,
+  "last_node_id": 14,
+  "last_link_id": 29,
   "nodes": [
     {
       "id": 1,
@@ -46,7 +46,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "VAE", "type": "VAE", "links": [3]}
+        {"name": "VAE", "type": "VAE", "links": [3, 28]}
       ],
       "title": "Audio VAE",
       "properties": {"Node name for S&R": "VAELoaderKJ"},
@@ -62,7 +62,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "VAE", "type": "VAE", "links": [4, 11, 14, 20]}
+        {"name": "VAE", "type": "VAE", "links": [11, 14, 20]}
       ],
       "title": "Video VAE",
       "properties": {"Node name for S&R": "VAELoaderKJ"},
@@ -106,7 +106,7 @@
         {"name": "video_latent", "type": "LATENT", "links": [8]},
         {"name": "audio_latent", "type": "LATENT", "links": [9]},
         {"name": "guide_data", "type": "GUIDE_DATA", "links": [10, 19]},
-        {"name": "frame_rate", "type": "FLOAT", "links": [12]},
+        {"name": "frame_rate", "type": "FLOAT", "links": [12, 29]},
         {"name": "combined_audio", "type": "AUDIO", "links": []}
       ],
       "properties": {
@@ -143,7 +143,7 @@
       ],
       "outputs": [
         {"name": "video_latent", "type": "LATENT", "links": [18]},
-        {"name": "audio_latent", "type": "LATENT", "links": [15, 22]},
+        {"name": "audio_latent", "type": "LATENT", "links": [22]},
         {"name": "positive", "type": "CONDITIONING", "links": [16]},
         {"name": "negative", "type": "CONDITIONING", "links": [24]}
       ],
@@ -207,7 +207,7 @@
         {"name": "vae", "type": "VAE", "link": 14}
       ],
       "outputs": [
-        {"name": "IMAGE", "type": "IMAGE", "links": []}
+        {"name": "IMAGE", "type": "IMAGE", "links": [25]}
       ],
       "properties": {"Node name for S&R": "VAEDecode"},
       "widgets_values": []
@@ -222,20 +222,69 @@
       "mode": 0,
       "inputs": [
         {"name": "samples", "type": "LATENT", "link": 23},
-        {"name": "audio_vae", "type": "VAE", "link": 3}
+        {"name": "audio_vae", "type": "VAE", "link": 28}
       ],
       "outputs": [
-        {"name": "AUDIO", "type": "AUDIO", "links": []}
+        {"name": "AUDIO", "type": "AUDIO", "links": [27]}
       ],
       "properties": {"Node name for S&R": "LTXVAudioVAEDecode"},
       "widgets_values": []
+    },
+    {
+      "id": 13,
+      "type": "RTXVideoSuperResolution",
+      "pos": [3120, 200],
+      "size": [300, 100],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 25}
+      ],
+      "outputs": [
+        {"name": "upscaled_images", "type": "IMAGE", "links": [26]}
+      ],
+      "properties": {"Node name for S&R": "RTXVideoSuperResolution"},
+      "widgets_values": ["scale by multiplier", 1.3, "HIGH"]
+    },
+    {
+      "id": 14,
+      "type": "VHS_VideoCombine",
+      "pos": [3500, 200],
+      "size": [300, 300],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 26},
+        {"name": "audio", "type": "AUDIO", "link": 27},
+        {"name": "meta_batch", "type": "VHS_BatchManager", "link": null},
+        {"name": "vae", "type": "VAE", "link": null},
+        {"name": "frame_rate", "type": "FLOAT", "link": 29}
+      ],
+      "outputs": [
+        {"name": "Filenames", "type": "VHS_FILENAMES", "links": null}
+      ],
+      "properties": {"Node name for S&R": "VHS_VideoCombine"},
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "LTXShotRenderer",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 14,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {"hidden": false, "paused": false, "params": {}}
+      }
     }
   ],
   "links": [
     [1, 1, 0, 5, 0, "MODEL"],
     [2, 2, 0, 6, 1, "CLIP"],
     [3, 3, 0, 6, 2, "VAE"],
-    [4, 4, 0, 8, 1, "VAE"],
     [5, 5, 0, 6, 0, "MODEL"],
     [6, 6, 0, 7, 0, "MODEL"],
     [7, 6, 1, 7, 1, "CONDITIONING"],
@@ -246,7 +295,6 @@
     [12, 6, 5, 7, 6, "FLOAT"],
     [13, 12, 0, 8, 0, "LATENT"],
     [14, 4, 0, 8, 1, "VAE"],
-    [15, 7, 1, 9, 0, "LATENT"],
     [16, 7, 2, 12, 1, "CONDITIONING"],
     [17, 6, 0, 12, 0, "MODEL"],
     [18, 7, 0, 12, 3, "LATENT"],
@@ -255,7 +303,12 @@
     [21, 11, 0, 12, 6, "LATENT_UPSCALE_MODEL"],
     [22, 7, 1, 12, 4, "LATENT"],
     [23, 12, 1, 9, 0, "LATENT"],
-    [24, 7, 3, 12, 2, "CONDITIONING"]
+    [24, 7, 3, 12, 2, "CONDITIONING"],
+    [25, 8, 0, 13, 0, "IMAGE"],
+    [26, 13, 0, 14, 0, "IMAGE"],
+    [27, 9, 0, 14, 1, "AUDIO"],
+    [28, 3, 0, 9, 1, "VAE"],
+    [29, 6, 5, 14, 4, "FLOAT"]
   ],
   "groups": [],
   "config": {},
