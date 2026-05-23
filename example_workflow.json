@@ -1,8 +1,8 @@
 {
   "id": "ltx-shot-renderer-example",
   "revision": 0,
-  "last_node_id": 10,
-  "last_link_id": 16,
+  "last_node_id": 12,
+  "last_link_id": 24,
   "nodes": [
     {
       "id": 1,
@@ -62,7 +62,7 @@
       "mode": 0,
       "inputs": [],
       "outputs": [
-        {"name": "VAE", "type": "VAE", "links": [4, 11, 14]}
+        {"name": "VAE", "type": "VAE", "links": [4, 11, 14, 20]}
       ],
       "title": "Video VAE",
       "properties": {"Node name for S&R": "VAELoaderKJ"},
@@ -101,11 +101,11 @@
         {"name": "optional_latent", "shape": 7, "type": "LATENT", "link": null}
       ],
       "outputs": [
-        {"name": "model", "type": "MODEL", "links": [6]},
+        {"name": "model", "type": "MODEL", "links": [6, 17]},
         {"name": "positive", "type": "CONDITIONING", "links": [7]},
         {"name": "video_latent", "type": "LATENT", "links": [8]},
         {"name": "audio_latent", "type": "LATENT", "links": [9]},
-        {"name": "guide_data", "type": "GUIDE_DATA", "links": [10]},
+        {"name": "guide_data", "type": "GUIDE_DATA", "links": [10, 19]},
         {"name": "frame_rate", "type": "FLOAT", "links": [12]},
         {"name": "combined_audio", "type": "AUDIO", "links": []}
       ],
@@ -128,7 +128,7 @@
       "id": 7,
       "type": "LTXShotRenderer",
       "pos": [2050, 200],
-      "size": [350, 520],
+      "size": [320, 350],
       "flags": {},
       "order": 6,
       "mode": 0,
@@ -139,35 +139,68 @@
         {"name": "audio_latent", "type": "LATENT", "link": 9},
         {"name": "guide_data", "type": "GUIDE_DATA", "link": 10},
         {"name": "vae", "type": "VAE", "link": 11},
-        {"name": "frame_rate", "type": "FLOAT", "link": 12},
-        {"name": "upscale_model", "shape": 7, "type": "LATENT_UPSCALE_MODEL", "link": 16}
+        {"name": "frame_rate", "type": "FLOAT", "link": 12}
       ],
       "outputs": [
-        {"name": "video_latent", "type": "LATENT", "links": [13]},
-        {"name": "audio_latent", "type": "LATENT", "links": [15]},
-        {"name": "first_pass_video", "type": "LATENT", "links": []}
+        {"name": "video_latent", "type": "LATENT", "links": [18]},
+        {"name": "audio_latent", "type": "LATENT", "links": [15, 22]},
+        {"name": "positive", "type": "CONDITIONING", "links": [16]},
+        {"name": "negative", "type": "CONDITIONING", "links": [24]}
       ],
       "properties": {"Node name for S&R": "LTXShotRenderer"},
-      "widgets_values": [
-        42,
-        14,
-        "euler",
-        "linear_quadratic",
-        0.5,
-        4,
-        0.42,
-        1.0
-      ],
+      "widgets_values": [42, 14, "euler", "linear_quadratic", 0.5],
       "color": "#234",
       "bgcolor": "#456"
     },
     {
-      "id": 8,
-      "type": "VAEDecode",
-      "pos": [2480, 200],
-      "size": [200, 50],
+      "id": 11,
+      "type": "LatentUpscaleModelLoader",
+      "pos": [2450, 700],
+      "size": [300, 60],
       "flags": {},
       "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "LATENT_UPSCALE_MODEL", "type": "LATENT_UPSCALE_MODEL", "links": [21]}
+      ],
+      "properties": {"Node name for S&R": "LatentUpscaleModelLoader"},
+      "widgets_values": ["ltx-2.3-spatial-upscaler-x2-1.0.safetensors"]
+    },
+    {
+      "id": 12,
+      "type": "LTXShotUpscaler",
+      "pos": [2450, 200],
+      "size": [320, 380],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 17},
+        {"name": "positive", "type": "CONDITIONING", "link": 16},
+        {"name": "negative", "type": "CONDITIONING", "link": 24},
+        {"name": "video_latent", "type": "LATENT", "link": 18},
+        {"name": "audio_latent", "type": "LATENT", "link": 22},
+        {"name": "guide_data", "type": "GUIDE_DATA", "link": 19},
+        {"name": "upscale_model", "type": "LATENT_UPSCALE_MODEL", "link": 21},
+        {"name": "vae", "type": "VAE", "link": 20}
+      ],
+      "outputs": [
+        {"name": "video_latent", "type": "LATENT", "links": [13]},
+        {"name": "audio_latent", "type": "LATENT", "links": [23]}
+      ],
+      "properties": {"Node name for S&R": "LTXShotUpscaler"},
+      "widgets_values": [42, 4, 0.42, "euler", "linear_quadratic", 1.0],
+      "color": "#243",
+      "bgcolor": "#465"
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [2850, 200],
+      "size": [200, 50],
+      "flags": {},
+      "order": 9,
       "mode": 0,
       "inputs": [
         {"name": "samples", "type": "LATENT", "link": 13},
@@ -182,13 +215,13 @@
     {
       "id": 9,
       "type": "LTXVAudioVAEDecode",
-      "pos": [2480, 350],
+      "pos": [2850, 350],
       "size": [200, 50],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
       "inputs": [
-        {"name": "samples", "type": "LATENT", "link": 15},
+        {"name": "samples", "type": "LATENT", "link": 23},
         {"name": "audio_vae", "type": "VAE", "link": 3}
       ],
       "outputs": [
@@ -196,21 +229,6 @@
       ],
       "properties": {"Node name for S&R": "LTXVAudioVAEDecode"},
       "widgets_values": []
-    },
-    {
-      "id": 10,
-      "type": "LatentUpscaleModelLoader",
-      "pos": [2050, 780],
-      "size": [300, 60],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {"name": "LATENT_UPSCALE_MODEL", "type": "LATENT_UPSCALE_MODEL", "links": [16]}
-      ],
-      "properties": {"Node name for S&R": "LatentUpscaleModelLoader"},
-      "widgets_values": ["ltx-2.3-spatial-upscaler-x2-1.0.safetensors"]
     }
   ],
   "links": [
@@ -226,10 +244,18 @@
     [10, 6, 4, 7, 4, "GUIDE_DATA"],
     [11, 4, 0, 7, 5, "VAE"],
     [12, 6, 5, 7, 6, "FLOAT"],
-    [13, 7, 0, 8, 0, "LATENT"],
+    [13, 12, 0, 8, 0, "LATENT"],
     [14, 4, 0, 8, 1, "VAE"],
     [15, 7, 1, 9, 0, "LATENT"],
-    [16, 10, 0, 7, 7, "LATENT_UPSCALE_MODEL"]
+    [16, 7, 2, 12, 1, "CONDITIONING"],
+    [17, 6, 0, 12, 0, "MODEL"],
+    [18, 7, 0, 12, 3, "LATENT"],
+    [19, 6, 4, 12, 5, "GUIDE_DATA"],
+    [20, 4, 0, 12, 7, "VAE"],
+    [21, 11, 0, 12, 6, "LATENT_UPSCALE_MODEL"],
+    [22, 7, 1, 12, 4, "LATENT"],
+    [23, 12, 1, 9, 0, "LATENT"],
+    [24, 7, 3, 12, 2, "CONDITIONING"]
   ],
   "groups": [],
   "config": {},
